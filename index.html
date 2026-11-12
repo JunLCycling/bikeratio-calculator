@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  
+  <!-- iOS / iPadOS 主畫面獨立全螢幕 PWA 設定 -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="齒比計算器" />
+  <meta name="theme-color" content="#000000" />
+  <title>RATIOS 齒比計算器</title>
+
+  <style>
+    :root {
+      --item-height: 34px;
+      --visible-items: 7;
+      --wheel-height: calc(var(--item-height) * var(--visible-items)); /* 238px */
+      --pad-height: calc(var(--item-height) * 3); /* 上下留白 3 格讓首尾數值可置中 */
+      --cyan: #32ade6;
+      --cyan-dim: rgba(50, 173, 230, 0.85);
+      --green: #30d158;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background-color: #000000;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", "SF Pro Display", "PingFang TC", "Helvetica Neue", sans-serif;
+      overflow: hidden; /* 鎖定外層畫面，避免滑動滾輪時整頁晃動 */
+    }
+
+    .app-container {
+      display: flex;
+      flex-direction: column;
+      max-width: 520px;
+      height: 100%;
+      margin: 0 auto;
+      padding: calc(env(safe-area-inset-top, 12px) + 8px) 16px calc(env(safe-area-inset-bottom, 12px) + 12px);
+      gap: 16px;
+    }
+
+    /* 頂部標題 */
+    .header-title {
+      text-align: center;
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      margin: 4px 0 0 0;
+    }
+
+    /* 上方四欄標題與滾輪區 */
+    .wheels-section {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .wheel-headers {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      text-align: center;
+      font-size: 15px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .wheels-wrapper {
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      height: var(--wheel-height);
+      background: #000000;
+      overflow: hidden;
+      /* 上下漸層遮罩，模擬原生滾輪立體感 */
+      -webkit-mask-image: linear-gradient(
+        to bottom,
+        rgba(0,0,0,0.15) 0%,
+        rgba(0,0,0,0.65) 22%,
+        rgba(0,0,0,1) 42%,
+        rgba(0,0,0,1) 58%,
+        rgba(0,0,0,0.65) 78%,
+        rgba(0,0,0,0.15) 100%
+      );
+      mask-image: linear-gradient(
+        to bottom,
+        rgba(0,0,0,0.15) 0%,
+        rgba(0,0,0,0.65) 22%,
+        rgba(0,0,0,1) 42%,
+        rgba(0,0,0,1) 58%,
+        rgba(0,0,0,0.65) 78%,
+        rgba(0,0,0,0.15) 100%
+      );
+    }
+
+    /* 中央選取高亮橫條 */
+    .wheel-highlight {
+      position: absolute;
+      top: var(--pad-height);
+      left: 0;
+      right: 0;
+      height: var(--item-height);
+      background: rgba(255, 255, 255, 0.1);
+      border-top: 1px solid rgba(255, 255, 255, 0.22);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 8px;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .wheel-column {
+      height: var(--wheel-height);
+      overflow-y: scroll;
+      scroll-snap-type: y mandatory;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      z-index: 2;
+    }
+
+    .wheel-column::-webkit-scrollbar {
+      display: none;
+    }
+
+    .wheel-spacer {
+      height: var(--pad-height);
+    }
+
+    .wheel-item {
+      height: var(--item-height);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      scroll-snap-align: center;
+      font-size: 20px;
+      font-weight: 600;
+      color: #8e8e93;
+      transition: transform 0.12s ease, color 0.12s ease, font-weight 0.12s ease;
+      cursor: pointer;
+    }
+
+    .wheel-item.active {
+      color: #ffffff;
+      font-size: 23px;
+      font-weight: 800;
+      transform: scale(1.06);
+    }
+
+    /* 中間：輪胎規格設定按鈕 */
+    .spec-button {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding: 14px 20px;
+      background: #000000;
+      border: 2px solid #ffffff;
+      border-radius: 10px;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .spec-button:active {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .spec-text {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--cyan);
+      letter-spacing: 0.3px;
+    }
+
+    .spec-chevron {
+      font-size: 22px;
+      font-weight: 800;
+      color: #ffffff;
+    }
+
+    /* 下方：計算結果區塊 */
+    .results-card {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 20px;
+      border: 2px solid #ffffff;
+      border-radius: 10px;
+      font-size: 22px;
+      font-weight: 800;
+    }
+
+    .result-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+
+    .label-cyan {
+      color: var(--cyan-dim);
+    }
+
+    .value-cyan {
+      color: var(--cyan);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .row-green {
+      color: var(--green);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* 彈出式輪胎規格選單 (Sheet) */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      z-index: 100;
+    }
+
+    .modal-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-sheet {
+      width: 100%;
+      max-width: 520px;
+      background: #1c1c1e;
+      border-radius: 16px 16px 0 0;
+      padding: 16px 16px calc(env(safe-area-inset-bottom, 16px) + 16px);
+      transform: translateY(100%);
+      transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1);
+    }
+
+    .modal-backdrop.open .modal-sheet {
+      transform: translateY(0);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+      margin-bottom: 10px;
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .modal-done-btn {
+      background: none;
+      border: none;
+      color: var(--cyan);
+      font-size: 17px;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+
+    .tire-wheel-wrapper {
+      position: relative;
+      height: var(--wheel-height);
+      overflow: hidden;
+      -webkit-mask-image: linear-gradient(
+        to bottom,
+        rgba(0,0,0,0.15) 0%,
+        rgba(0,0,0,1) 40%,
+        rgba(0,0,0,1) 60%,
+        rgba(0,0,0,0.15) 100%
+      );
+      mask-image: linear-gradient(
+        to bottom,
+        rgba(0,0,0,0.15) 0%,
+        rgba(0,0,0,1) 40%,
+        rgba(0,0,0,1) 60%,
+        rgba(0,0,0,0.15) 100%
+      );
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    <h1 class="header-title">RATIOS 齒比計算器</h1>
+
+    <!-- 上方：四欄標題與滾輪選擇器 -->
+    <div class="wheels-section">
+      <div class="wheel-headers">
+        <div>前齒</div>
+        <div>後齒</div>
+        <div>迴轉(RPM)</div>
+        <div>距離(KM)</div>
+      </div>
+
+      <div class="wheels-wrapper">
+        <div class="wheel-highlight"></div>
+        <div id="wheel-chainring" class="wheel-column"></div>
+        <div id="wheel-sprocket" class="wheel-column"></div>
+        <div id="wheel-rpm" class="wheel-column"></div>
+        <div id="wheel-distance" class="wheel-column"></div>
+      </div>
+    </div>
+
+    <!-- 中間：輪胎規格按鈕 -->
+    <button id="open-tire-btn" class="spec-button" type="button">
+      <span id="tire-label" class="spec-text">輪胎規格: 700 X 20</span>
+      <span class="spec-chevron">&rsaquo;</span>
+    </button>
+
+    <!-- 下方：計算結果區塊 -->
+    <div class="results-card">
+      <div class="result-row">
+        <span class="label-cyan">齒比 (吋):</span>
+        <span id="res-gear-inches" class="value-cyan">117.64 吋</span>
+      </div>
+      <div class="result-row">
+        <span class="label-cyan">速度:</span>
+        <span id="res-speed" class="value-cyan">48.9 KM/H</span>
+      </div>
+      <div class="result-row row-green">
+        <span id="res-time-label">騎乘時間 (5 KM):</span>
+        <span id="res-time-value">6分 07.85秒</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 點擊中間區塊彈出的輪胎規格選單 -->
+  <div id="tire-modal" class="modal-backdrop">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <span class="modal-title">輪胎規格設定</span>
+        <button id="close-tire-btn" class="modal-done-btn" type="button">完成</button>
+      </div>
+      <div class="tire-wheel-wrapper">
+        <div class="wheel-highlight"></div>
+        <div id="wheel-tire" class="wheel-column"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // 1. 數值範圍設定區（對應你的 SwiftUI 設定）
+    // ==========================================
+    const ITEM_HEIGHT = 34;
+
+    const chainringList = Array.from({ length: 75 - 45 + 1 }, (_, i) => 45 + i); // 45 ~ 75
+    const sprocketList  = Array.from({ length: 20 - 10 + 1 }, (_, i) => 10 + i); // 10 ~ 20
+    const rpmList       = Array.from({ length: 160 - 40 + 1 }, (_, i) => 40 + i); // 40 ~ 160
+    const distanceList  = [0.2, 0.25, 0.333, 0.5, 0.666, 1, 1.5, 2, 3, 4, 5, 7.5, 10, 15, 16, 20, 25, 30, 50];
+
+    const tireSpecs = [
+      { name: "700 X 18", diameterMM: 658.0 },
+      { name: "700 X 20", diameterMM: 662.0 },
+      { name: "700 X 23", diameterMM: 668.0 },
+      { name: "700 X 25", diameterMM: 672.0 },
+      { name: "700 X 28", diameterMM: 678.0 },
+      { name: "700 X 30", diameterMM: 682.0 },
+      { name: "700 X 32", diameterMM: 686.0 },
+      { name: "700 X 35", diameterMM: 692.0 },
+      { name: "700 X 38", diameterMM: 698.0 },
+      { name: "700 X 40", diameterMM: 702.0 },
+      { name: "700 X 42", diameterMM: 706.0 },
+      { name: "700 X 45", diameterMM: 712.0 }
+    ];
+
+    // ==========================================
+    // 2. 狀態讀取與本機永久記憶 (localStorage)
+    // ==========================================
+    function loadSavedValue(key, list, defaultVal) {
+      const saved = localStorage.getItem(key);
+      if (saved !== null) {
+        const num = Number(saved);
+        if (list.includes(num)) return num;
+      }
+      return defaultVal;
+    }
+
+    let selectedChainring = loadSavedValue("selectedChainring", chainringList, 61);
+    let selectedSprocket  = loadSavedValue("selectedSprocket", sprocketList, 14);
+    let selectedRPM       = loadSavedValue("selectedRPM", rpmList, 90);
+    let selectedDistance  = loadSavedValue("selectedDistance", distanceList, 5.0);
+
+    let selectedTireIndex = Number(localStorage.getItem("selectedTireIndex") ?? 1);
+    if (selectedTireIndex < 0 || selectedTireIndex >= tireSpecs.length) {
+      selectedTireIndex = 1;
+    }
+
+    // ==========================================
+    // 3. 即時計算公式區（固定 27 吋基準 + 外徑轉周長）
+    // ==========================================
+    function formatDistance(km) {
+      return Number.isInteger(km) ? km.toFixed(0) : String(km);
+    }
+
+    function updateCalculations() {
+      // 基礎齒比
+      const gearRatio = selectedChainring / selectedSprocket;
+
+      // 齒比(吋) = 27 × 前齒 ÷ 後齒
+      const gearInches = 27.0 * gearRatio;
+
+      // 輪胎周長(公尺) = 外徑(mm) × π ÷ 1000
+      const wheelCircumferenceMeters = (tireSpecs[selectedTireIndex].diameterMM * Math.PI) / 1000.0;
+
+      // 速度(KM/H)
+      const developmentMeters = gearRatio * wheelCircumferenceMeters;
+      const speedKmh = (developmentMeters * selectedRPM * 60.0) / 1000.0;
+
+      // 騎乘時間格式化（秒數統一顯示到小數點後兩位）
+      let ridingTimeFormatted = "0.00秒";
+      if (speedKmh > 0) {
+        const totalSeconds = (selectedDistance / speedKmh) * 3600.0;
+        const roundedTotal = Math.round(totalSeconds * 100) / 100;
+        const minutes = Math.floor(roundedTotal / 60);
+        const seconds = roundedTotal - minutes * 60;
+
+        if (minutes > 0) {
+          const secStr = seconds.toFixed(2).padStart(5, "0");
+          ridingTimeFormatted = `${minutes}分 ${secStr}秒`;
+        } else {
+          ridingTimeFormatted = `${roundedTotal.toFixed(2)}秒`;
+        }
+      }
+
+      // 更新畫面文字
+      document.getElementById("tire-label").textContent = `輪胎規格: ${tireSpecs[selectedTireIndex].name}`;
+      document.getElementById("res-gear-inches").textContent = `${gearInches.toFixed(2)} 吋`;
+      document.getElementById("res-speed").textContent = `${speedKmh.toFixed(1)} KM/H`;
+      document.getElementById("res-time-label").textContent = `騎乘時間 (${formatDistance(selectedDistance)} KM):`;
+      document.getElementById("res-time-value").textContent = ridingTimeFormatted;
+    }
+
+    // ==========================================
+    // 4. 滾輪元件建立與捲動綁定
+    // ==========================================
+    function setupWheel(containerId, items, initialIndex, formatFn, onSelect) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = "";
+
+      const topSpacer = document.createElement("div");
+      topSpacer.className = "wheel-spacer";
+      container.appendChild(topSpacer);
+
+      const itemEls = items.map((item, idx) => {
+        const div = document.createElement("div");
+        div.className = "wheel-item" + (idx === initialIndex ? " active" : "");
+        div.textContent = formatFn(item);
+        div.addEventListener("click", () => {
+          container.scrollTo({ top: idx * ITEM_HEIGHT, behavior: "smooth" });
+        });
+        container.appendChild(div);
+        return div;
+      });
+
+      const bottomSpacer = document.createElement("div");
+      bottomSpacer.className = "wheel-spacer";
+      container.appendChild(bottomSpacer);
+
+      // 初始定位
+      requestAnimationFrame(() => {
+        container.scrollTop = initialIndex * ITEM_HEIGHT;
+      });
+
+      let activeIdx = initialIndex;
+      container.addEventListener("scroll", () => {
+        const rawIdx = Math.round(container.scrollTop / ITEM_HEIGHT);
+        const clampedIdx = Math.max(0, Math.min(items.length - 1, rawIdx));
+        if (clampedIdx !== activeIdx) {
+          itemEls[activeIdx]?.classList.remove("active");
+          itemEls[clampedIdx]?.classList.add("active");
+          activeIdx = clampedIdx;
+          onSelect(items[clampedIdx], clampedIdx);
+        }
+      }, { passive: true });
+    }
+
+    // 初始化四個主滾輪與輪胎滾輪
+    setupWheel("wheel-chainring", chainringList, chainringList.indexOf(selectedChainring), v => v, (val) => {
+      selectedChainring = val;
+      localStorage.setItem("selectedChainring", val);
+      updateCalculations();
+    });
+
+    setupWheel("wheel-sprocket", sprocketList, sprocketList.indexOf(selectedSprocket), v => v, (val) => {
+      selectedSprocket = val;
+      localStorage.setItem("selectedSprocket", val);
+      updateCalculations();
+    });
+
+    setupWheel("wheel-rpm", rpmList, rpmList.indexOf(selectedRPM), v => v, (val) => {
+      selectedRPM = val;
+      localStorage.setItem("selectedRPM", val);
+      updateCalculations();
+    });
+
+    setupWheel("wheel-distance", distanceList, distanceList.indexOf(selectedDistance), v => formatDistance(v), (val) => {
+      selectedDistance = val;
+      localStorage.setItem("selectedDistance", val);
+      updateCalculations();
+    });
+
+    setupWheel("wheel-tire", tireSpecs, selectedTireIndex, item => item.name, (_, idx) => {
+      selectedTireIndex = idx;
+      localStorage.setItem("selectedTireIndex", idx);
+      updateCalculations();
+    });
+
+    // 輪胎設定彈出視窗控制
+    const tireModal = document.getElementById("tire-modal");
+    const wheelTireEl = document.getElementById("wheel-tire");
+
+    document.getElementById("open-tire-btn").addEventListener("click", () => {
+      tireModal.classList.add("open");
+      wheelTireEl.scrollTop = selectedTireIndex * ITEM_HEIGHT;
+    });
+
+    document.getElementById("close-tire-btn").addEventListener("click", () => {
+      tireModal.classList.remove("open");
+    });
+
+    tireModal.addEventListener("click", (e) => {
+      if (e.target === tireModal) tireModal.classList.remove("open");
+    });
+
+    // 初次載入計算
+    updateCalculations();
+  </script>
+</body>
+</html>
