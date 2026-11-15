@@ -199,4 +199,242 @@
       </div>
       <div class="form-group">
         <label>Cloudflare Worker 網址</label>
-        <input type="url"
+        <input type="url" id="cfg-worker" placeholder="https://podcast-proxy.你的帳號.workers.dev" />
+      </div>
+      <div class="modal-actions">
+        <button class="icon-btn" onclick="clearSettings()">清除金鑰</button>
+        <button class="icon-btn" onclick="closeSettings()">取消</button>
+        <button class="submit-btn" style="padding: 8px 18px; font-size: 14px;" onclick="saveSettings()">儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentTitle = "podcast_transcript";
+
+    function getConfig() {
+      return {
+        apiKey: localStorage.getItem("gemini_api_key") || "",
+        workerUrl: localStorage.getItem("cf_worker_url") || ""
+      };
+    }
+
+    function openSettings() {
+      const { apiKey, workerUrl } = getConfig();
+      document.getElementById("cfg-apikey").value = apiKey;
+      document.getElementById("cfg-worker").value = workerUrl;
+      document.getElementById("settings-modal").classList.add("active");
+    }
+
+    function closeSettings() {
+      document.getElementById("settings-modal").classList.remove("active");
+    }
+
+    function saveSettings() {
+      const apiKey = document.getElementById("cfg-apikey").value.trim();
+      const workerUrl = document.getElementById("cfg-worker").value.trim();
+      localStorage.setItem("gemini_api_key", apiKey);
+      localStorage.setItem("cf_worker_url", workerUrl);
+      closeSettings();
+    }
+
+    function clearSettings() {
+      localStorage.removeItem("gemini_api_key");
+      localStorage.removeItem("cf_worker_url");
+      document.getElementById("cfg-apikey").value = "";
+      document.getElementById("cfg-worker").value = "";
+      alert("已從本機瀏覽器清除 API Key！");
+    }
+
+    function switchPage(pageId) {
+      document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+      document.getElementById(pageId).classList.add("active");
+    }
+
+    function goBack() {
+      switchPage("page-input");
+    }
+
+    function setStatus(msg) {
+      document.getElementById("status-text").textContent = msg;
+    }
+
+    async function fetchJsonWithCorsFallback(targetUrl) {
+      const routes = [
+        targetUrl,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
+        `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`
+      ];
+
+      for (const route of routes) {
+        try {
+          const res = await fetch(route);
+          if (res.ok) {
+            return await res.json();
+          }
+        } catch (e) {}
+      }
+      throw new Error("無法連線至 Apple iTunes API（所有跨域路線皆失敗）");
+    }
+
+    async function resolvePodcastInBrowser(inputUrl) {
+      if (!inputUrl.includes("podcasts.apple.com")) {
+        return { audioUrl: inputUrl, title: "Podcast Audio" };
+      }
+
+      const podcastIdMatch = inputUrl.match(/id(\d+)/);
+      const episodeIdMatch = inputUrl.match(/[?&]i=(\d+)/);
+      if (!podcastIdMatch) {
+        throw new Error("無法從 Apple Podcasts 網址辨識節目 ID");
+      }
+
+      const podcastId = podcastIdMatch[1];
+      const episodeId = episodeIdMatch ? episodeIdMatch[1] : null;
+
+      const lookupUrl = `https://itunes.apple.com/lookup?id=${podcastId}&entity=podcastEpisode&limit=200`;
+      const lookupData = await fetchJsonWithCorsFallback(lookupUrl);
+
+      if (!lookupData.results || lookupData.results.length === 0) {
+        throw new Error("iTunes API 找不到此節目");
+      }
+
+      const episodes = lookupData.results.slice(1);
+
+      if (episodeId) {
+        const matchedEp = episodes.find(ep => String(ep.trackId) === String(episodeId));
+        if (matchedEp && matchedEp.episodeUrl) {
+          return { audioUrl: matchedEp.episodeUrl, title: matchedEp.trackName };
+        }
+      } else if (episodes.length > 0 && episodes[0].episodeUrl) {
+        return { audioUrl: episodes[0].episodeUrl, title: episodes[0].trackName };
+      }
+
+      throw new Error("找不到此單集的音檔連結（可能為付費訂閱專屬或過舊單集）");
+    }
+
+    async function handleStart(e) {
+      e.preventDefault();
+      const url = document.getElementById("podcast-url").value.trim();
+      const { apiKey, workerUrl } = getConfig();
+
+      if (!apiKey || !workerUrl) {
+        alert("首次使用請先點擊右上角「⚙️ API 設定」填入你自己的 Gemini API Key 與 Worker 網址。");
+        openSettings();
+        return;
+      }
+
+      switchPage("page-result");
+      const outputEl = document.getElementById("transcript-output");
+      const titleEl = document.getElementById("ep-title");
+      outputEl.textContent = "";
+      titleEl.textContent = "解析單集資訊中...";
+
+      try {
+        setStatus("步驟 1/4：正在從 Apple 取得單集音檔連結...");
+        const { audioUrl, title } = await resolvePodcastInBrowser(url);
+        currentTitle = title || "Podcast 單集";
+        titleEl.textContent = currentTitle;
+
+        setStatus("步驟 2/4：正在透過 Cloudflare Worker 將音檔傳送至 Gemini...");
+        let workerRes;
+        try {
+          workerRes = await fetch(workerUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ audioUrl, title: currentTitle, apiKey })
+          });
+        } catch (netErr) {
+          throw new Error(`無法連線至 Cloudflare Worker (${workerUrl})，請檢查設定裡的 Worker 網址是否正確。`);
+        }
+
+        const fileInfo = await workerRes.json();
+        if (!workerRes.ok || fileInfo.error) {
+          throw new Error(fileInfo.error || "Worker 傳送失敗");
+        }
+
+        setStatus("步驟 3/4：等待 Gemini 音訊處理就緒...");
+        let state = fileInfo.state;
+        while (state === "PROCESSING") {
+          await new Promise(r => setTimeout(r, 2500));
+          const checkRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileInfo.fileName}?key=${apiKey}`);
+          const checkData = await checkRes.json();
+          state = checkData.state;
+          if (state === "FAILED") throw new Error("Gemini 音訊處理失敗");
+        }
+
+        setStatus("步驟 4/4：正在即時生成逐字稿（長音檔約需 1～2 分鐘）...");
+        const streamUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=${apiKey}`;
+
+        const geminiRes = await fetch(streamUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  { file_data: { mime_type: fileInfo.mimeType, file_uri: fileInfo.fileUri } },
+                  { text: "請將這段 Podcast 音檔轉錄為完整、不省略的逐字稿。自動區分不同講者（例如：講者 A、講者 B 或主持人、來賓），並每隔一個段落標註大致的時間戳記 [MM:SS]。音檔是什麼語言就用什麼語言輸出。" }
+                ]
+              }
+            ],
+            generationConfig: {
+              temperature: 0.2
+            }
+          })
+        });
+
+        if (!geminiRes.ok) {
+          const errText = await geminiRes.text();
+          throw new Error(`Gemini 生成失敗: ${errText}`);
+        }
+
+        const reader = geminiRes.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const jsonStr = line.slice(6).trim();
+              if (!jsonStr || jsonStr === "[DONE]") continue;
+              try {
+                const data = JSON.parse(jsonStr);
+                const textChunk = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                outputEl.textContent += textChunk;
+              } catch (e) {}
+            }
+          }
+        }
+
+        setStatus("✅ 逐字稿生成完成！");
+      } catch (err) {
+        setStatus(`❌ 發生錯誤：${err.message}`);
+      }
+    }
+
+    function copyTranscript() {
+      const text = document.getElementById("transcript-output").textContent;
+      if (!text) return;
+      navigator.clipboard.writeText(text);
+      alert("已複製逐字稿到剪貼簿！");
+    }
+
+    function downloadTranscript() {
+      const text = document.getElementById("transcript-output").textContent;
+      if (!text) return;
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${currentTitle}.txt`;
+      a.click();
+    }
+  </script>
+</body>
+</html>
