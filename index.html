@@ -23,11 +23,7 @@
       display: flex;
       flex-direction: column;
     }
-    .top-bar {
-      display: flex;
-      justify-content: flex-end;
-      padding: 16px 24px;
-    }
+    .top-bar { display: flex; justify-content: flex-end; padding: 16px 24px; }
     .icon-btn {
       background: var(--card);
       color: var(--muted);
@@ -48,22 +44,9 @@
       padding: 24px;
     }
     .page.active { display: flex; flex-direction: column; }
-    #page-input {
-      justify-content: center;
-      align-items: center;
-      margin-top: -6vh;
-    }
-    .hero-title {
-      font-size: 28px;
-      font-weight: 700;
-      margin-bottom: 24px;
-      letter-spacing: 0.5px;
-    }
-    .input-row {
-      display: flex;
-      width: 100%;
-      gap: 12px;
-    }
+    #page-input { justify-content: center; align-items: center; margin-top: -6vh; }
+    .hero-title { font-size: 28px; font-weight: 700; margin-bottom: 24px; letter-spacing: 0.5px; }
+    .input-row { display: flex; width: 100%; gap: 12px; }
     .url-input {
       flex: 1;
       padding: 16px 20px;
@@ -96,12 +79,7 @@
       flex-wrap: wrap;
     }
     .action-group { display: flex; gap: 10px; }
-    .episode-title {
-      font-size: 20px;
-      font-weight: 600;
-      margin-bottom: 8px;
-      color: #e2e8f0;
-    }
+    .episode-title { font-size: 20px; font-weight: 600; margin-bottom: 8px; color: #e2e8f0; }
     .status-bar {
       font-size: 14px;
       color: var(--accent);
@@ -195,7 +173,7 @@
       <h3>連線設定（僅儲存於本機瀏覽器）</h3>
       <div class="form-group">
         <label>Gemini API Key</label>
-        <input type="password" id="cfg-apikey" placeholder="AQ.Ab8... 或 AIzaSy..." />
+        <input type="password" id="cfg-apikey" placeholder="貼上 API Key..." />
       </div>
       <div class="form-group">
         <label>Cloudflare Worker 網址</label>
@@ -214,8 +192,8 @@
 
     function getConfig() {
       return {
-        apiKey: localStorage.getItem("gemini_api_key") || "",
-        workerUrl: localStorage.getItem("cf_worker_url") || ""
+        apiKey: (localStorage.getItem("gemini_api_key") || "").trim(),
+        workerUrl: (localStorage.getItem("cf_worker_url") || "").trim().replace(/\/+$/, "")
       };
     }
 
@@ -232,7 +210,7 @@
 
     function saveSettings() {
       const apiKey = document.getElementById("cfg-apikey").value.trim();
-      const workerUrl = document.getElementById("cfg-worker").value.trim();
+      const workerUrl = document.getElementById("cfg-worker").value.trim().replace(/\/+$/, "");
       localStorage.setItem("gemini_api_key", apiKey);
       localStorage.setItem("cf_worker_url", workerUrl);
       closeSettings();
@@ -265,28 +243,22 @@
         `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
         `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`
       ];
-
       for (const route of routes) {
         try {
           const res = await fetch(route);
-          if (res.ok) {
-            return await res.json();
-          }
+          if (res.ok) return await res.json();
         } catch (e) {}
       }
-      throw new Error("無法連線至 Apple iTunes API（所有跨域路線皆失敗）");
+      throw new Error("無法連線至 Apple iTunes API");
     }
 
     async function resolvePodcastInBrowser(inputUrl) {
       if (!inputUrl.includes("podcasts.apple.com")) {
         return { audioUrl: inputUrl, title: "Podcast Audio" };
       }
-
       const podcastIdMatch = inputUrl.match(/id(\d+)/);
       const episodeIdMatch = inputUrl.match(/[?&]i=(\d+)/);
-      if (!podcastIdMatch) {
-        throw new Error("無法從 Apple Podcasts 網址辨識節目 ID");
-      }
+      if (!podcastIdMatch) throw new Error("無法從網址辨識節目 ID");
 
       const podcastId = podcastIdMatch[1];
       const episodeId = episodeIdMatch ? episodeIdMatch[1] : null;
@@ -299,7 +271,6 @@
       }
 
       const episodes = lookupData.results.slice(1);
-
       if (episodeId) {
         const matchedEp = episodes.find(ep => String(ep.trackId) === String(episodeId));
         if (matchedEp && matchedEp.episodeUrl) {
@@ -308,8 +279,80 @@
       } else if (episodes.length > 0 && episodes[0].episodeUrl) {
         return { audioUrl: episodes[0].episodeUrl, title: episodes[0].trackName };
       }
+      throw new Error("找不到此單集的音檔連結");
+    }
 
-      throw new Error("找不到此單集的音檔連結（可能為付費訂閱專屬或過舊單集）");
+    // 讀取音檔（先嘗試瀏覽器直連，若遇 CORS 自動走 Cloudflare Worker）
+    async function downloadAudioBlob(audioUrl, workerUrl) {
+      const proxyUrl = `${workerUrl}?audioUrl=${encodeURIComponent(audioUrl)}`;
+      let res;
+      try {
+        res = await fetch(proxyUrl);
+      } catch (err) {
+        throw new Error(`無法連上 Worker (${workerUrl})，請在新分頁打開該網址確認是否能顯示 OK，或關閉廣告阻擋外掛。(${err.message})`);
+      }
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Worker 下載音檔失敗 (${res.status}): ${errText}`);
+      }
+
+      const reader = res.body.getReader();
+      const chunks = [];
+      let received = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        setStatus(`步驟 2/4：正在讀取音檔串流... 已接收 ${(received / 1048576).toFixed(1)} MB`);
+      }
+
+      return new Blob(chunks, { type: res.headers.get("content-type") || "audio/mpeg" });
+    }
+
+    // 將音檔 Blob 直接由瀏覽器上傳至 Google Gemini File API
+    async function uploadBlobToGemini(blob, title, apiKey) {
+      setStatus(`步驟 3/4：正在將音檔 (${(blob.size / 1048576).toFixed(1)} MB) 上傳至 Gemini...`);
+      const initRes = await fetch(
+        `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: {
+            "X-Goog-Upload-Protocol": "resumable",
+            "X-Goog-Upload-Command": "start",
+            "X-Goog-Upload-Header-Content-Length": blob.size.toString(),
+            "X-Goog-Upload-Header-Content-Type": blob.type || "audio/mpeg",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ file: { display_name: title } })
+        }
+      );
+
+      if (!initRes.ok) {
+        const errText = await initRes.text();
+        throw new Error(`Gemini API 金鑰驗證或初始化失敗 (${initRes.status}): ${errText}`);
+      }
+
+      const uploadUrl = initRes.headers.get("x-goog-upload-url");
+      const uploadRes = await fetch(uploadUrl, {
+        method: "POST",
+        headers: {
+          "Content-Length": blob.size.toString(),
+          "X-Goog-Upload-Offset": "0",
+          "X-Goog-Upload-Command": "upload, finalize"
+        },
+        body: blob
+      });
+
+      if (!uploadRes.ok) {
+        const errText = await uploadRes.text();
+        throw new Error(`音檔上傳 Gemini 失敗 (${uploadRes.status}): ${errText}`);
+      }
+
+      const data = await uploadRes.json();
+      return data.file;
     }
 
     async function handleStart(e) {
@@ -318,7 +361,7 @@
       const { apiKey, workerUrl } = getConfig();
 
       if (!apiKey || !workerUrl) {
-        alert("首次使用請先點擊右上角「⚙️ API 設定」填入你自己的 Gemini API Key 與 Worker 網址。");
+        alert("請先點擊右上角「⚙️ API 設定」填入 Gemini API Key 與 Worker 網址。");
         openSettings();
         return;
       }
@@ -335,34 +378,24 @@
         currentTitle = title || "Podcast 單集";
         titleEl.textContent = currentTitle;
 
-        setStatus("步驟 2/4：正在透過 Cloudflare Worker 將音檔傳送至 Gemini...");
-        let workerRes;
-        try {
-          workerRes = await fetch(workerUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ audioUrl, title: currentTitle, apiKey })
-          });
-        } catch (netErr) {
-          throw new Error(`無法連線至 Cloudflare Worker (${workerUrl})，請檢查設定裡的 Worker 網址是否正確。`);
-        }
+        // 步驟 2：透過 Worker 串流讀取音檔並顯示 MB 進度
+        const audioBlob = await downloadAudioBlob(audioUrl, workerUrl);
 
-        const fileInfo = await workerRes.json();
-        if (!workerRes.ok || fileInfo.error) {
-          throw new Error(fileInfo.error || "Worker 傳送失敗");
-        }
+        // 步驟 3：上傳至 Gemini File API
+        const fileInfo = await uploadBlobToGemini(audioBlob, currentTitle, apiKey);
 
-        setStatus("步驟 3/4：等待 Gemini 音訊處理就緒...");
         let state = fileInfo.state;
         while (state === "PROCESSING") {
+          setStatus("步驟 3/4：等待 Gemini 音訊處理就緒...");
           await new Promise(r => setTimeout(r, 2500));
-          const checkRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileInfo.fileName}?key=${apiKey}`);
+          const checkRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileInfo.name}?key=${apiKey}`);
           const checkData = await checkRes.json();
           state = checkData.state;
           if (state === "FAILED") throw new Error("Gemini 音訊處理失敗");
         }
 
-        setStatus("步驟 4/4：正在即時生成逐字稿（長音檔約需 1～2 分鐘）...");
+        // 步驟 4：串流生成逐字稿
+        setStatus("步驟 4/4：正在即時生成逐字稿...");
         const streamUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=${apiKey}`;
 
         const geminiRes = await fetch(streamUrl, {
@@ -373,14 +406,12 @@
               {
                 role: "user",
                 parts: [
-                  { file_data: { mime_type: fileInfo.mimeType, file_uri: fileInfo.fileUri } },
+                  { file_data: { mime_type: fileInfo.mimeType || "audio/mpeg", file_uri: fileInfo.uri } },
                   { text: "請將這段 Podcast 音檔轉錄為完整、不省略的逐字稿。自動區分不同講者（例如：講者 A、講者 B 或主持人、來賓），並每隔一個段落標註大致的時間戳記 [MM:SS]。音檔是什麼語言就用什麼語言輸出。" }
                 ]
               }
             ],
-            generationConfig: {
-              temperature: 0.2
-            }
+            generationConfig: { temperature: 0.2 }
           })
         });
 
