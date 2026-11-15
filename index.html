@@ -1,549 +1,400 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  
-  <!-- iOS / iPadOS 主畫面獨立全螢幕 PWA 設定 -->
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="齒比計算器" />
-  <meta name="theme-color" content="#000000" />
-  <title>RATIOS 齒比計算器</title>
-
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Podcast 逐字稿產生器</title>
   <style>
     :root {
-      --item-height: 34px;
-      --visible-items: 7;
-      --wheel-height: calc(var(--item-height) * var(--visible-items)); /* 238px */
-      --pad-height: calc(var(--item-height) * 3); /* 上下留白 3 格讓首尾數值可置中 */
-      --cyan: #32ade6;
-      --cyan-dim: rgba(50, 173, 230, 0.85);
-      --green: #30d158;
+      --bg: #0f172a;
+      --card: #1e293b;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --border: #334155;
     }
-
-    * {
-      box-sizing: border-box;
-      -webkit-tap-highlight-color: transparent;
-      user-select: none;
-      -webkit-user-select: none;
-    }
-
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      background-color: #000000;
-      color: #ffffff;
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", "SF Pro Display", "PingFang TC", "Helvetica Neue", sans-serif;
-      overflow: hidden; /* 鎖定外層畫面，避免滑動滾輪時整頁晃動 */
-    }
-
-    .app-container {
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
       display: flex;
       flex-direction: column;
-      max-width: 520px;
-      height: 100%;
-      margin: 0 auto;
-      padding: calc(env(safe-area-inset-top, 12px) + 8px) 16px calc(env(safe-area-inset-bottom, 12px) + 12px);
-      gap: 16px;
     }
-
-    /* 頂部標題 */
-    .header-title {
-      text-align: center;
-      font-size: 24px;
-      font-weight: 800;
-      letter-spacing: 0.5px;
-      margin: 4px 0 0 0;
-    }
-
-    /* 上方四欄標題與滾輪區 */
-    .wheels-section {
+    /* 右上角設定按鈕 */
+    .top-bar {
       display: flex;
-      flex-direction: column;
-      gap: 6px;
+      justify-content: flex-end;
+      padding: 16px 24px;
     }
-
-    .wheel-headers {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      text-align: center;
-      font-size: 15px;
-      font-weight: 700;
-      color: #ffffff;
-    }
-
-    .wheels-wrapper {
-      position: relative;
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      height: var(--wheel-height);
-      background: #000000;
-      overflow: hidden;
-      /* 上下漸層遮罩，模擬原生滾輪立體感 */
-      -webkit-mask-image: linear-gradient(
-        to bottom,
-        rgba(0,0,0,0.15) 0%,
-        rgba(0,0,0,0.65) 22%,
-        rgba(0,0,0,1) 42%,
-        rgba(0,0,0,1) 58%,
-        rgba(0,0,0,0.65) 78%,
-        rgba(0,0,0,0.15) 100%
-      );
-      mask-image: linear-gradient(
-        to bottom,
-        rgba(0,0,0,0.15) 0%,
-        rgba(0,0,0,0.65) 22%,
-        rgba(0,0,0,1) 42%,
-        rgba(0,0,0,1) 58%,
-        rgba(0,0,0,0.65) 78%,
-        rgba(0,0,0,0.15) 100%
-      );
-    }
-
-    /* 中央選取高亮橫條 */
-    .wheel-highlight {
-      position: absolute;
-      top: var(--pad-height);
-      left: 0;
-      right: 0;
-      height: var(--item-height);
-      background: rgba(255, 255, 255, 0.1);
-      border-top: 1px solid rgba(255, 255, 255, 0.22);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.22);
+    .icon-btn {
+      background: var(--card);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 8px 14px;
       border-radius: 8px;
-      pointer-events: none;
-      z-index: 1;
+      cursor: pointer;
+      font-size: 14px;
+      transition: 0.2s;
     }
+    .icon-btn:hover { color: var(--text); border-color: var(--accent); }
 
-    .wheel-column {
-      height: var(--wheel-height);
-      overflow-y: scroll;
-      scroll-snap-type: y mandatory;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-      z-index: 2;
-    }
-
-    .wheel-column::-webkit-scrollbar {
+    /* 頁面容器切換 */
+    .page {
       display: none;
+      flex: 1;
+      width: 100%;
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 24px;
     }
+    .page.active { display: flex; flex-direction: column; }
 
-    .wheel-spacer {
-      height: var(--pad-height);
-    }
-
-    .wheel-item {
-      height: var(--item-height);
-      display: flex;
-      align-items: center;
+    /* 第一頁：極簡輸入頁 */
+    #page-input {
       justify-content: center;
-      scroll-snap-align: center;
+      align-items: center;
+      margin-top: -6vh;
+    }
+    .hero-title {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 24px;
+      letter-spacing: 0.5px;
+    }
+    .input-row {
+      display: flex;
+      width: 100%;
+      gap: 12px;
+    }
+    .url-input {
+      flex: 1;
+      padding: 16px 20px;
+      font-size: 16px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      outline: none;
+      transition: border 0.2s;
+    }
+    .url-input:focus { border-color: var(--accent); }
+    .submit-btn {
+      padding: 0 28px;
+      font-size: 16px;
+      font-weight: 600;
+      border-radius: 12px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s;
+    }
+    .submit-btn:hover { background: var(--accent-hover); }
+
+    /* 第二頁：逐字稿結果頁 */
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .action-group { display: flex; gap: 10px; }
+    .episode-title {
       font-size: 20px;
       font-weight: 600;
-      color: #8e8e93;
-      transition: transform 0.12s ease, color 0.12s ease, font-weight 0.12s ease;
-      cursor: pointer;
+      margin-bottom: 8px;
+      color: #e2e8f0;
+    }
+    .status-bar {
+      font-size: 14px;
+      color: var(--accent);
+      margin-bottom: 16px;
+      padding: 10px 14px;
+      background: rgba(59, 130, 246, 0.1);
+      border-left: 3px solid var(--accent);
+      border-radius: 6px;
+    }
+    .transcript-box {
+      flex: 1;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      line-height: 1.8;
+      font-size: 16px;
+      white-space: pre-wrap;
+      overflow-y: auto;
+      min-height: 60vh;
     }
 
-    .wheel-item.active {
-      color: #ffffff;
-      font-size: 23px;
-      font-weight: 800;
-      transform: scale(1.06);
-    }
-
-    /* 中間：輪胎規格設定按鈕 */
-    .spec-button {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      width: 100%;
-      padding: 14px 20px;
-      background: #000000;
-      border: 2px solid #ffffff;
-      border-radius: 10px;
-      cursor: pointer;
-      text-align: left;
-    }
-
-    .spec-button:active {
-      background: rgba(255, 255, 255, 0.1);
-    }
-
-    .spec-text {
-      font-size: 20px;
-      font-weight: 800;
-      color: var(--cyan);
-      letter-spacing: 0.3px;
-    }
-
-    .spec-chevron {
-      font-size: 22px;
-      font-weight: 800;
-      color: #ffffff;
-    }
-
-    /* 下方：計算結果區塊 */
-    .results-card {
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-      padding: 20px;
-      border: 2px solid #ffffff;
-      border-radius: 10px;
-      font-size: 22px;
-      font-weight: 800;
-    }
-
-    .result-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-    }
-
-    .label-cyan {
-      color: var(--cyan-dim);
-    }
-
-    .value-cyan {
-      color: var(--cyan);
-      font-variant-numeric: tabular-nums;
-    }
-
-    .row-green {
-      color: var(--green);
-      font-variant-numeric: tabular-nums;
-    }
-
-    /* 彈出式輪胎規格選單 (Sheet) */
-    .modal-backdrop {
+    /* 設定彈窗 */
+    .modal-overlay {
+      display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.65);
-      display: flex;
-      align-items: flex-end;
+      background: rgba(0, 0, 0, 0.7);
       justify-content: center;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.2s ease;
+      align-items: center;
       z-index: 100;
     }
-
-    .modal-backdrop.open {
-      opacity: 1;
-      pointer-events: auto;
+    .modal-overlay.active { display: flex; }
+    .modal {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      width: 90%;
+      max-width: 460px;
     }
-
-    .modal-sheet {
+    .modal h3 { margin-bottom: 16px; font-size: 18px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+    .form-group input {
       width: 100%;
-      max-width: 520px;
-      background: #1c1c1e;
-      border-radius: 16px 16px 0 0;
-      padding: 16px 16px calc(env(safe-area-inset-bottom, 16px) + 16px);
-      transform: translateY(100%);
-      transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1);
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
     }
-
-    .modal-backdrop.open .modal-sheet {
-      transform: translateY(0);
-    }
-
-    .modal-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding-bottom: 12px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-      margin-bottom: 10px;
-    }
-
-    .modal-title {
-      font-size: 18px;
-      font-weight: 700;
-      color: #ffffff;
-    }
-
-    .modal-done-btn {
-      background: none;
-      border: none;
-      color: var(--cyan);
-      font-size: 17px;
-      font-weight: 700;
-      cursor: pointer;
-      padding: 4px 8px;
-    }
-
-    .tire-wheel-wrapper {
-      position: relative;
-      height: var(--wheel-height);
-      overflow: hidden;
-      -webkit-mask-image: linear-gradient(
-        to bottom,
-        rgba(0,0,0,0.15) 0%,
-        rgba(0,0,0,1) 40%,
-        rgba(0,0,0,1) 60%,
-        rgba(0,0,0,0.15) 100%
-      );
-      mask-image: linear-gradient(
-        to bottom,
-        rgba(0,0,0,0.15) 0%,
-        rgba(0,0,0,1) 40%,
-        rgba(0,0,0,1) 60%,
-        rgba(0,0,0,0.15) 100%
-      );
-    }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
   </style>
 </head>
 <body>
 
-  <div class="app-container">
-    <h1 class="header-title">RATIOS 齒比計算器</h1>
-
-    <!-- 上方：四欄標題與滾輪選擇器 -->
-    <div class="wheels-section">
-      <div class="wheel-headers">
-        <div>前齒</div>
-        <div>後齒</div>
-        <div>迴轉(RPM)</div>
-        <div>距離(KM)</div>
-      </div>
-
-      <div class="wheels-wrapper">
-        <div class="wheel-highlight"></div>
-        <div id="wheel-chainring" class="wheel-column"></div>
-        <div id="wheel-sprocket" class="wheel-column"></div>
-        <div id="wheel-rpm" class="wheel-column"></div>
-        <div id="wheel-distance" class="wheel-column"></div>
-      </div>
-    </div>
-
-    <!-- 中間：輪胎規格按鈕 -->
-    <button id="open-tire-btn" class="spec-button" type="button">
-      <span id="tire-label" class="spec-text">輪胎規格: 700 X 20</span>
-      <span class="spec-chevron">&rsaquo;</span>
-    </button>
-
-    <!-- 下方：計算結果區塊 -->
-    <div class="results-card">
-      <div class="result-row">
-        <span class="label-cyan">齒比 (吋):</span>
-        <span id="res-gear-inches" class="value-cyan">117.64 吋</span>
-      </div>
-      <div class="result-row">
-        <span class="label-cyan">速度:</span>
-        <span id="res-speed" class="value-cyan">48.9 KM/H</span>
-      </div>
-      <div class="result-row row-green">
-        <span id="res-time-label">騎乘時間 (5 KM):</span>
-        <span id="res-time-value">6分 07.85秒</span>
-      </div>
-    </div>
+  <!-- 右上角設定鈕 -->
+  <div class="top-bar">
+    <button class="icon-btn" onclick="openSettings()">⚙️ API 設定</button>
   </div>
 
-  <!-- 點擊中間區塊彈出的輪胎規格選單 -->
-  <div id="tire-modal" class="modal-backdrop">
-    <div class="modal-sheet">
-      <div class="modal-header">
-        <span class="modal-title">輪胎規格設定</span>
-        <button id="close-tire-btn" class="modal-done-btn" type="button">完成</button>
+  <!-- 頁面 1：輸入網址 -->
+  <div id="page-input" class="page active">
+    <div class="hero-title">Podcast 逐字稿產生器</div>
+    <form class="input-row" onsubmit="handleStart(event)">
+      <input
+        type="url"
+        id="podcast-url"
+        class="url-input"
+        placeholder="貼上 Apple Podcasts 單集連結或 .mp3 網址..."
+        required
+      />
+      <button type="submit" class="submit-btn">輸入生成</button>
+    </form>
+  </div>
+
+  <!-- 頁面 2：生成結果頁 -->
+  <div id="page-result" class="page">
+    <div class="result-header">
+      <button class="icon-btn" onclick="goBack()">← 返回上一頁</button>
+      <div class="action-group">
+        <button class="icon-btn" onclick="copyTranscript()">複製全文</button>
+        <button class="icon-btn" onclick="downloadTranscript()">下載 .txt</button>
       </div>
-      <div class="tire-wheel-wrapper">
-        <div class="wheel-highlight"></div>
-        <div id="wheel-tire" class="wheel-column"></div>
+    </div>
+    <div id="ep-title" class="episode-title">準備中...</div>
+    <div id="status-text" class="status-bar">正在初始化...</div>
+    <div id="transcript-output" class="transcript-box"></div>
+  </div>
+
+  <!-- 設定 Modal (僅存於使用者自己的瀏覽器 localStorage) -->
+  <div id="settings-modal" class="modal-overlay">
+    <div class="modal">
+      <h3>連線設定（僅儲存於本機瀏覽器）</h3>
+      <div class="form-group">
+        <label>Gemini API Key</label>
+        <input type="password" id="cfg-apikey" placeholder="AIzaSy..." />
+      </div>
+      <div class="form-group">
+        <label>Cloudflare Worker 網址</label>
+        <input type="url" id="cfg-worker" placeholder="https://podcast-proxy.你的帳號.workers.dev" />
+      </div>
+      <div class="modal-actions">
+        <button class="icon-btn" onclick="clearSettings()">清除金鑰</button>
+        <button class="icon-btn" onclick="closeSettings()">取消</button>
+        <button class="submit-btn" style="padding: 8px 18px; font-size: 14px;" onclick="saveSettings()">儲存</button>
       </div>
     </div>
   </div>
 
   <script>
-    // ==========================================
-    // 1. 數值範圍設定區（對應你的 SwiftUI 設定）
-    // ==========================================
-    const ITEM_HEIGHT = 34;
+    let currentTitle = "podcast_transcript";
 
-    const chainringList = Array.from({ length: 75 - 45 + 1 }, (_, i) => 45 + i); // 45 ~ 75
-    const sprocketList  = Array.from({ length: 20 - 10 + 1 }, (_, i) => 10 + i); // 10 ~ 20
-    const rpmList       = Array.from({ length: 160 - 40 + 1 }, (_, i) => 40 + i); // 40 ~ 160
-    const distanceList  = [0.2, 0.25, 0.333, 0.5, 0.666, 1, 1.5, 2, 3, 4, 5, 7.5, 10, 15, 16, 20, 25, 30, 50];
-
-    const tireSpecs = [
-      { name: "700 X 18", diameterMM: 658.0 },
-      { name: "700 X 20", diameterMM: 662.0 },
-      { name: "700 X 23", diameterMM: 668.0 },
-      { name: "700 X 25", diameterMM: 672.0 },
-      { name: "700 X 28", diameterMM: 678.0 },
-      { name: "700 X 30", diameterMM: 682.0 },
-      { name: "700 X 32", diameterMM: 686.0 },
-      { name: "700 X 35", diameterMM: 692.0 },
-      { name: "700 X 38", diameterMM: 698.0 },
-      { name: "700 X 40", diameterMM: 702.0 },
-      { name: "700 X 42", diameterMM: 706.0 },
-      { name: "700 X 45", diameterMM: 712.0 }
-    ];
-
-    // ==========================================
-    // 2. 狀態讀取與本機永久記憶 (localStorage)
-    // ==========================================
-    function loadSavedValue(key, list, defaultVal) {
-      const saved = localStorage.getItem(key);
-      if (saved !== null) {
-        const num = Number(saved);
-        if (list.includes(num)) return num;
-      }
-      return defaultVal;
+    // 初始化讀取本機設定
+    function getConfig() {
+      return {
+        apiKey: localStorage.getItem("gemini_api_key") || "",
+        workerUrl: localStorage.getItem("cf_worker_url") || ""
+      };
     }
 
-    let selectedChainring = loadSavedValue("selectedChainring", chainringList, 61);
-    let selectedSprocket  = loadSavedValue("selectedSprocket", sprocketList, 14);
-    let selectedRPM       = loadSavedValue("selectedRPM", rpmList, 90);
-    let selectedDistance  = loadSavedValue("selectedDistance", distanceList, 5.0);
-
-    let selectedTireIndex = Number(localStorage.getItem("selectedTireIndex") ?? 1);
-    if (selectedTireIndex < 0 || selectedTireIndex >= tireSpecs.length) {
-      selectedTireIndex = 1;
+    function openSettings() {
+      const { apiKey, workerUrl } = getConfig();
+      document.getElementById("cfg-apikey").value = apiKey;
+      document.getElementById("cfg-worker").value = workerUrl;
+      document.getElementById("settings-modal").classList.add("active");
     }
 
-    // ==========================================
-    // 3. 即時計算公式區（固定 27 吋基準 + 外徑轉周長）
-    // ==========================================
-    function formatDistance(km) {
-      return Number.isInteger(km) ? km.toFixed(0) : String(km);
+    function closeSettings() {
+      document.getElementById("settings-modal").classList.remove("active");
     }
 
-    function updateCalculations() {
-      // 基礎齒比
-      const gearRatio = selectedChainring / selectedSprocket;
+    function saveSettings() {
+      const apiKey = document.getElementById("cfg-apikey").value.trim();
+      const workerUrl = document.getElementById("cfg-worker").value.trim();
+      localStorage.setItem("gemini_api_key", apiKey);
+      localStorage.setItem("cf_worker_url", workerUrl);
+      closeSettings();
+    }
 
-      // 齒比(吋) = 27 × 前齒 ÷ 後齒
-      const gearInches = 27.0 * gearRatio;
+    function clearSettings() {
+      localStorage.removeItem("gemini_api_key");
+      localStorage.removeItem("cf_worker_url");
+      document.getElementById("cfg-apikey").value = "";
+      document.getElementById("cfg-worker").value = "";
+      alert("已從本機瀏覽器清除 API Key！");
+    }
 
-      // 輪胎周長(公尺) = 外徑(mm) × π ÷ 1000
-      const wheelCircumferenceMeters = (tireSpecs[selectedTireIndex].diameterMM * Math.PI) / 1000.0;
+    function switchPage(pageId) {
+      document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+      document.getElementById(pageId).classList.add("active");
+    }
 
-      // 速度(KM/H)
-      const developmentMeters = gearRatio * wheelCircumferenceMeters;
-      const speedKmh = (developmentMeters * selectedRPM * 60.0) / 1000.0;
+    function goBack() {
+      switchPage("page-input");
+    }
 
-      // 騎乘時間格式化（秒數統一顯示到小數點後兩位）
-      let ridingTimeFormatted = "0.00秒";
-      if (speedKmh > 0) {
-        const totalSeconds = (selectedDistance / speedKmh) * 3600.0;
-        const roundedTotal = Math.round(totalSeconds * 100) / 100;
-        const minutes = Math.floor(roundedTotal / 60);
-        const seconds = roundedTotal - minutes * 60;
+    function setStatus(msg) {
+      document.getElementById("status-text").textContent = msg;
+    }
 
-        if (minutes > 0) {
-          const secStr = seconds.toFixed(2).padStart(5, "0");
-          ridingTimeFormatted = `${minutes}分 ${secStr}秒`;
-        } else {
-          ridingTimeFormatted = `${roundedTotal.toFixed(2)}秒`;
-        }
+    async function handleStart(e) {
+      e.preventDefault();
+      const url = document.getElementById("podcast-url").value.trim();
+      const { apiKey, workerUrl } = getConfig();
+
+      if (!apiKey || !workerUrl) {
+        alert("首次使用請先點擊右上角「⚙️ API 設定」填入你自己的 Gemini API Key 與 Worker 網址。");
+        openSettings();
+        return;
       }
 
-      // 更新畫面文字
-      document.getElementById("tire-label").textContent = `輪胎規格: ${tireSpecs[selectedTireIndex].name}`;
-      document.getElementById("res-gear-inches").textContent = `${gearInches.toFixed(2)} 吋`;
-      document.getElementById("res-speed").textContent = `${speedKmh.toFixed(1)} KM/H`;
-      document.getElementById("res-time-label").textContent = `騎乘時間 (${formatDistance(selectedDistance)} KM):`;
-      document.getElementById("res-time-value").textContent = ridingTimeFormatted;
-    }
+      // 切換至下一頁並清空舊內容
+      switchPage("page-result");
+      const outputEl = document.getElementById("transcript-output");
+      const titleEl = document.getElementById("ep-title");
+      outputEl.textContent = "";
+      titleEl.textContent = "解析單集資訊中...";
+      setStatus("步驟 1/3：正在解析 Podcast 連結並將音檔由雲端傳送至 Gemini...");
 
-    // ==========================================
-    // 4. 滾輪元件建立與捲動綁定
-    // ==========================================
-    function setupWheel(containerId, items, initialIndex, formatFn, onSelect) {
-      const container = document.getElementById(containerId);
-      container.innerHTML = "";
-
-      const topSpacer = document.createElement("div");
-      topSpacer.className = "wheel-spacer";
-      container.appendChild(topSpacer);
-
-      const itemEls = items.map((item, idx) => {
-        const div = document.createElement("div");
-        div.className = "wheel-item" + (idx === initialIndex ? " active" : "");
-        div.textContent = formatFn(item);
-        div.addEventListener("click", () => {
-          container.scrollTo({ top: idx * ITEM_HEIGHT, behavior: "smooth" });
+      try {
+        // 1. 呼叫 Cloudflare Worker 解析並上傳音檔至 Gemini File API
+        const workerRes = await fetch(workerUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url, apiKey })
         });
-        container.appendChild(div);
-        return div;
-      });
 
-      const bottomSpacer = document.createElement("div");
-      bottomSpacer.className = "wheel-spacer";
-      container.appendChild(bottomSpacer);
-
-      // 初始定位
-      requestAnimationFrame(() => {
-        container.scrollTop = initialIndex * ITEM_HEIGHT;
-      });
-
-      let activeIdx = initialIndex;
-      container.addEventListener("scroll", () => {
-        const rawIdx = Math.round(container.scrollTop / ITEM_HEIGHT);
-        const clampedIdx = Math.max(0, Math.min(items.length - 1, rawIdx));
-        if (clampedIdx !== activeIdx) {
-          itemEls[activeIdx]?.classList.remove("active");
-          itemEls[clampedIdx]?.classList.add("active");
-          activeIdx = clampedIdx;
-          onSelect(items[clampedIdx], clampedIdx);
+        const fileInfo = await workerRes.json();
+        if (!workerRes.ok || fileInfo.error) {
+          throw new Error(fileInfo.error || "Worker 處理失敗");
         }
-      }, { passive: true });
+
+        currentTitle = fileInfo.title || "Podcast 單集";
+        titleEl.textContent = currentTitle;
+
+        // 2. 確認 Gemini 音檔狀態為 ACTIVE
+        setStatus("步驟 2/3：等待 Gemini 音訊處理就緒...");
+        let state = fileInfo.state;
+        while (state === "PROCESSING") {
+          await new Promise(r => setTimeout(r, 2500));
+          const checkRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileInfo.fileName}?key=${apiKey}`);
+          const checkData = await checkRes.json();
+          state = checkData.state;
+          if (state === "FAILED") throw new Error("Gemini 音訊處理失敗");
+        }
+
+        // 3. 呼叫 Gemini 2.5 Flash 串流生成逐字稿
+        setStatus("步驟 3/3：正在即時生成逐字稿（長音檔約需 1～2 分鐘）...");
+        const streamUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=${apiKey}`;
+
+        const geminiRes = await fetch(streamUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  { file_data: { mime_type: fileInfo.mimeType, file_uri: fileInfo.fileUri } },
+                  { text: "請將這段 Podcast 音檔轉錄為完整、不省略的逐字稿。請自動區分不同講者（例如：講者 A、講者 B 或主持人、來賓），並每隔一個段落標註大致的時間戳記 [MM:SS]。音檔是什麼語言就用什麼語言輸出。" }
+                ]
+              }
+            ],
+            generationConfig: {
+              temperature: 0.2
+            }
+          })
+        });
+
+        if (!geminiRes.ok) {
+          const errText = await geminiRes.text();
+          throw new Error(`Gemini 生成失敗: ${errText}`);
+        }
+
+        // 讀取 SSE 串流並即時顯示於畫面上
+        const reader = geminiRes.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const jsonStr = line.slice(6).trim();
+              if (!jsonStr || jsonStr === "[DONE]") continue;
+              try {
+                const data = JSON.parse(jsonStr);
+                const textChunk = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                outputEl.textContent += textChunk;
+              } catch (e) {}
+            }
+          }
+        }
+
+        setStatus("✅ 逐字稿生成完成！");
+      } catch (err) {
+        setStatus(`❌ 發生錯誤：${err.message}`);
+      }
     }
 
-    // 初始化四個主滾輪與輪胎滾輪
-    setupWheel("wheel-chainring", chainringList, chainringList.indexOf(selectedChainring), v => v, (val) => {
-      selectedChainring = val;
-      localStorage.setItem("selectedChainring", val);
-      updateCalculations();
-    });
+    function copyTranscript() {
+      const text = document.getElementById("transcript-output").textContent;
+      if (!text) return;
+      navigator.clipboard.writeText(text);
+      alert("已複製逐字稿到剪貼簿！");
+    }
 
-    setupWheel("wheel-sprocket", sprocketList, sprocketList.indexOf(selectedSprocket), v => v, (val) => {
-      selectedSprocket = val;
-      localStorage.setItem("selectedSprocket", val);
-      updateCalculations();
-    });
-
-    setupWheel("wheel-rpm", rpmList, rpmList.indexOf(selectedRPM), v => v, (val) => {
-      selectedRPM = val;
-      localStorage.setItem("selectedRPM", val);
-      updateCalculations();
-    });
-
-    setupWheel("wheel-distance", distanceList, distanceList.indexOf(selectedDistance), v => formatDistance(v), (val) => {
-      selectedDistance = val;
-      localStorage.setItem("selectedDistance", val);
-      updateCalculations();
-    });
-
-    setupWheel("wheel-tire", tireSpecs, selectedTireIndex, item => item.name, (_, idx) => {
-      selectedTireIndex = idx;
-      localStorage.setItem("selectedTireIndex", idx);
-      updateCalculations();
-    });
-
-    // 輪胎設定彈出視窗控制
-    const tireModal = document.getElementById("tire-modal");
-    const wheelTireEl = document.getElementById("wheel-tire");
-
-    document.getElementById("open-tire-btn").addEventListener("click", () => {
-      tireModal.classList.add("open");
-      wheelTireEl.scrollTop = selectedTireIndex * ITEM_HEIGHT;
-    });
-
-    document.getElementById("close-tire-btn").addEventListener("click", () => {
-      tireModal.classList.remove("open");
-    });
-
-    tireModal.addEventListener("click", (e) => {
-      if (e.target === tireModal) tireModal.classList.remove("open");
-    });
-
-    // 初次載入計算
-    updateCalculations();
+    function downloadTranscript() {
+      const text = document.getElementById("transcript-output").textContent;
+      if (!text) return;
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${currentTitle}.txt`;
+      a.click();
+    }
   </script>
 </body>
 </html>
