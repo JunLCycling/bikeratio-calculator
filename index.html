@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
-<head> 
+<head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Podcast 逐字稿產生器</title>
@@ -39,7 +39,6 @@
       transition: 0.2s;
     }
     .icon-btn:hover { color: var(--text); border-color: var(--accent); }
-
     .page {
       display: none;
       flex: 1;
@@ -49,7 +48,6 @@
       padding: 24px;
     }
     .page.active { display: flex; flex-direction: column; }
-
     #page-input {
       justify-content: center;
       align-items: center;
@@ -75,7 +73,6 @@
       background: var(--card);
       color: var(--text);
       outline: none;
-      transition: border 0.2s;
     }
     .url-input:focus { border-color: var(--accent); }
     .submit-btn {
@@ -88,12 +85,118 @@
       color: #fff;
       cursor: pointer;
       white-space: nowrap;
-      transition: background 0.2s;
     }
     .submit-btn:hover { background: var(--accent-hover); }
-
     .result-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 16
+      margin-bottom: 16px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .action-group { display: flex; gap: 10px; }
+    .episode-title {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #e2e8f0;
+    }
+    .status-bar {
+      font-size: 14px;
+      color: var(--accent);
+      margin-bottom: 16px;
+      padding: 10px 14px;
+      background: rgba(59, 130, 246, 0.1);
+      border-left: 3px solid var(--accent);
+      border-radius: 6px;
+      word-break: break-all;
+    }
+    .transcript-box {
+      flex: 1;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      line-height: 1.8;
+      font-size: 16px;
+      white-space: pre-wrap;
+      overflow-y: auto;
+      min-height: 60vh;
+    }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      width: 90%;
+      max-width: 460px;
+    }
+    .modal h3 { margin-bottom: 16px; font-size: 18px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+    .form-group input {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+    }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+  </style>
+</head>
+<body>
+
+  <div class="top-bar">
+    <button class="icon-btn" onclick="openSettings()">⚙️ API 設定</button>
+  </div>
+
+  <div id="page-input" class="page active">
+    <div class="hero-title">Podcast 逐字稿產生器</div>
+    <form class="input-row" onsubmit="handleStart(event)">
+      <input
+        type="url"
+        id="podcast-url"
+        class="url-input"
+        placeholder="貼上 Apple Podcasts 單集連結或 .mp3 網址..."
+        required
+      />
+      <button type="submit" class="submit-btn">輸入生成</button>
+    </form>
+  </div>
+
+  <div id="page-result" class="page">
+    <div class="result-header">
+      <button class="icon-btn" onclick="goBack()">← 返回上一頁</button>
+      <div class="action-group">
+        <button class="icon-btn" onclick="copyTranscript()">複製全文</button>
+        <button class="icon-btn" onclick="downloadTranscript()">下載 .txt</button>
+      </div>
+    </div>
+    <div id="ep-title" class="episode-title">準備中...</div>
+    <div id="status-text" class="status-bar">正在初始化...</div>
+    <div id="transcript-output" class="transcript-box"></div>
+  </div>
+
+  <div id="settings-modal" class="modal-overlay">
+    <div class="modal">
+      <h3>連線設定（僅儲存於本機瀏覽器）</h3>
+      <div class="form-group">
+        <label>Gemini API Key</label>
+        <input type="password" id="cfg-apikey" placeholder="AQ.Ab8... 或 AIzaSy..." />
+      </div>
+      <div class="form-group">
+        <label>Cloudflare Worker 網址</label>
+        <input type="url"
